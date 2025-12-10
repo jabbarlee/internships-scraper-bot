@@ -1,0 +1,22 @@
+{
+  "name": "summer-2026-internship-scraper",
+  "version": "1.0.0",
+  "description": "A scraper to find Summer 2026 tech internships from various sources",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "scrape:github": "node src/sources/github.js"
+  },
+  "keywords": [
+    "internship",
+    "scraper",
+    "jobs",
+    "software-engineering"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.2"
+  }
+}
