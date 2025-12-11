@@ -25,7 +25,7 @@ async function scrapeGitHubInternships() {
     const response = await axios.get(GITHUB_RAW_URL);
     const markdown = response.data;
 
-    // Parse the HTML table from markdown
+    // Parse the Markdown table
     const internships = parseMarkdownTable(markdown);
 
     // Filter internships based on role and location criteria
@@ -39,37 +39,57 @@ async function scrapeGitHubInternships() {
 }
 
 /**
- * Parses the HTML table from the Markdown content
+ * Parses the Markdown table from the README content
  * @param {string} markdown - Raw markdown content
- * @returns {Array<{company: string, role: string, location: string, link: string}>}
+ * @returns {Array<{company: string, role: string, location: string, link: string, datePosted: string}>}
  */
 function parseMarkdownTable(markdown) {
   const internships = [];
 
-  // The table uses HTML format with <tr> rows
-  // Match all table rows in tbody
-  const rowRegex = /<tr>\s*([\s\S]*?)\s*<\/tr>/gi;
-  const rows = markdown.match(rowRegex) || [];
+  // Split by lines
+  const lines = markdown.split("\n");
 
   let lastCompany = ""; // Track last company for rows that use ↳ symbol
+  let inTable = false;
 
-  for (const row of rows) {
-    // Skip header rows
-    if (row.includes("<th>")) continue;
-
-    // Extract table cells
-    const cellRegex = /<td>([\s\S]*?)<\/td>/gi;
-    const cells = [];
-    let match;
-
-    while ((match = cellRegex.exec(row)) !== null) {
-      cells.push(match[1].trim());
+  for (const line of lines) {
+    // Detect table header row
+    if (line.includes("| Company") && line.includes("| Role")) {
+      inTable = true;
+      continue;
     }
 
-    // We expect at least 4 cells: Company, Role, Location, Application, (Date Posted)
+    // Skip separator row (| --- | --- | ... |)
+    if (line.match(/^\|\s*[-:]+\s*\|/)) {
+      continue;
+    }
+
+    // Stop parsing when we hit contributor section or end of table
+    if (inTable && !line.startsWith("|")) {
+      break;
+    }
+
+    // Skip if not in table yet or empty lines
+    if (!inTable || !line.startsWith("|")) {
+      continue;
+    }
+
+    // Parse markdown table row: | Company | Role | Location | Application/Link | Date Posted |
+    const cells = line
+      .split("|")
+      .map((cell) => cell.trim())
+      .filter((cell) => cell.length > 0);
+
+    // We expect 5 cells: Company, Role, Location, Application/Link, Date Posted
     if (cells.length < 4) continue;
 
-    const [companyCell, roleCell, locationCell, applicationCell, datePostedCell] = cells;
+    const [
+      companyCell,
+      roleCell,
+      locationCell,
+      applicationCell,
+      datePostedCell,
+    ] = cells;
 
     // Parse company name
     let company = extractCompanyName(companyCell);
@@ -81,7 +101,7 @@ function parseMarkdownTable(markdown) {
       lastCompany = company;
     }
 
-    // Parse role
+    // Parse role (remove emoji flags like 🛂, 🇺🇸)
     const role = cleanText(roleCell);
 
     // Parse location (handle multiple locations and <details> tags)
@@ -90,11 +110,18 @@ function parseMarkdownTable(markdown) {
     // Parse application link
     const link = extractApplicationLink(applicationCell);
 
-    // Parse date posted (5th column in Summer 2026 repo)
+    // Parse date posted
     const datePosted = datePostedCell ? cleanText(datePostedCell) : "";
 
     // Skip if essential fields are missing or application is closed (🔒)
-    if (!company || !role || !link || link === "🔒") continue;
+    if (
+      !company ||
+      !role ||
+      !link ||
+      link === "🔒" ||
+      applicationCell.includes("🔒")
+    )
+      continue;
 
     internships.push({
       company,
@@ -111,7 +138,7 @@ function parseMarkdownTable(markdown) {
 
 /**
  * Extracts company name from cell content
- * @param {string} cellContent - HTML content of company cell
+ * @param {string} cellContent - Content of company cell
  * @returns {string}
  */
 function extractCompanyName(cellContent) {
@@ -126,12 +153,10 @@ function extractCompanyName(cellContent) {
     return cleanText(linkMatch[1]);
   }
 
-  // Extract from <strong> tag
-  const strongMatch = cellContent.match(
-    /<strong[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>[\s\S]*?<\/strong>/i
-  );
-  if (strongMatch) {
-    return cleanText(strongMatch[1]);
+  // Extract from markdown link [text](url)
+  const mdLinkMatch = cellContent.match(/\[([^\]]+)\]\([^)]+\)/);
+  if (mdLinkMatch) {
+    return cleanText(mdLinkMatch[1]);
   }
 
   return cleanText(cellContent);
@@ -139,13 +164,13 @@ function extractCompanyName(cellContent) {
 
 /**
  * Extracts location from cell content, handling multiple formats
- * @param {string} cellContent - HTML content of location cell
+ * @param {string} cellContent - Content of location cell
  * @returns {string}
  */
 function extractLocation(cellContent) {
   // Handle <details> tag for multiple locations
   const detailsMatch = cellContent.match(
-    /<details>[\s\S]*?<summary>[\s\S]*?<strong>(\d+\s+locations)<\/strong>[\s\S]*?<\/summary>([\s\S]*?)<\/details>/i
+    /<details>[\s\S]*?<summary>[\s\S]*?\*\*(\d+\s+locations)\*\*[\s\S]*?<\/summary>([\s\S]*?)<\/details>/i
   );
   if (detailsMatch) {
     const locationList = detailsMatch[2];
@@ -168,25 +193,29 @@ function extractLocation(cellContent) {
 
 /**
  * Extracts the application link from cell content
- * @param {string} cellContent - HTML content of application cell
+ * @param {string} cellContent - Content of application cell
  * @returns {string}
  */
 function extractApplicationLink(cellContent) {
-  // Look for the first href that's not a Simplify link
-  const linkMatches = cellContent.matchAll(/<a\s+href="([^"]+)"/gi);
-
-  for (const match of linkMatches) {
-    const href = match[1];
-    // Skip simplify.jobs links, we want the direct application link
-    if (!href.includes("simplify.jobs")) {
-      // Clean up tracking parameters
-      return href.split("?utm_source")[0];
-    }
+  // Check if application is closed
+  if (cellContent.includes("🔒")) {
+    return "🔒";
   }
 
-  // If only Simplify link exists, return it
-  const anyLink = cellContent.match(/<a\s+href="([^"]+)"/i);
-  return anyLink ? anyLink[1] : "";
+  // Look for href in HTML anchor tags
+  const hrefMatch = cellContent.match(/<a\s+href="([^"]+)"/i);
+  if (hrefMatch) {
+    // Clean up tracking parameters
+    return hrefMatch[1].split("?utm_source")[0];
+  }
+
+  // Look for markdown links [text](url)
+  const mdLinkMatch = cellContent.match(/\[([^\]]+)\]\(([^)]+)\)/);
+  if (mdLinkMatch) {
+    return mdLinkMatch[2].split("?utm_source")[0];
+  }
+
+  return "";
 }
 
 /**
@@ -197,10 +226,14 @@ function extractApplicationLink(cellContent) {
 function cleanText(text) {
   return text
     .replace(/<[^>]*>/g, "") // Remove HTML tags
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // Convert markdown links to text
+    .replace(/\*\*([^*]+)\*\*/g, "$1") // Remove bold markdown
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&nbsp;/g, " ")
+    .replace(/&apos;/g, "'")
+    .replace(/🛂|🇺🇸/g, "") // Remove emoji flags
     .replace(/\s+/g, " ") // Normalize whitespace
     .trim();
 }
@@ -239,6 +272,7 @@ async function main() {
       console.log(`${index + 1}. ${internship.company}`);
       console.log(`   Role: ${internship.role}`);
       console.log(`   Location: ${internship.location}`);
+      console.log(`   Date Posted: ${internship.datePosted}`);
       console.log(`   Link: ${internship.link}`);
       console.log("");
     });

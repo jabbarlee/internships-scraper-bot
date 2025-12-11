@@ -14,8 +14,10 @@ async function main() {
     console.log("📤 Sending jobs to Google Sheets...");
     const result = await addToSheet(jobs);
 
-    console.log(`\n🎉 Success: Added ${result.added} new jobs to the spreadsheet.`);
-    
+    console.log(
+      `\n🎉 Success: Added ${result.added} new jobs to the spreadsheet.`
+    );
+
     if (result.duplicates > 0) {
       console.log(`   (${result.duplicates} duplicates were skipped)`);
     }
@@ -26,4 +28,3 @@ async function main() {
 }
 
 main();
-
