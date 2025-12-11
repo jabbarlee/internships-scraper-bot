@@ -98,6 +98,7 @@ async function addToSheet(jobsArray) {
       Role: job.role,
       Location: job.location,
       "Application Link": job.link,
+      "Date Posted": job.datePosted || "",
       Source: job.source,
       "Date Added": new Date().toISOString().split("T")[0],
     }));

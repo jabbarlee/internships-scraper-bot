@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const GITHUB_RAW_URL =
-  "https://raw.githubusercontent.com/pittcsc/Summer2025-Internships/dev/README.md";
+  "https://raw.githubusercontent.com/vanshb03/Summer2026-Internships/dev/README.md";
 
 // Locations to filter by
 const ALLOWED_LOCATIONS = [
@@ -66,10 +66,10 @@ function parseMarkdownTable(markdown) {
       cells.push(match[1].trim());
     }
 
-    // We expect at least 4 cells: Company, Role, Location, Application
+    // We expect at least 4 cells: Company, Role, Location, Application, (Date Posted)
     if (cells.length < 4) continue;
 
-    const [companyCell, roleCell, locationCell, applicationCell] = cells;
+    const [companyCell, roleCell, locationCell, applicationCell, datePostedCell] = cells;
 
     // Parse company name
     let company = extractCompanyName(companyCell);
@@ -90,14 +90,18 @@ function parseMarkdownTable(markdown) {
     // Parse application link
     const link = extractApplicationLink(applicationCell);
 
-    // Skip if essential fields are missing
-    if (!company || !role || !link) continue;
+    // Parse date posted (5th column in Summer 2026 repo)
+    const datePosted = datePostedCell ? cleanText(datePostedCell) : "";
+
+    // Skip if essential fields are missing or application is closed (🔒)
+    if (!company || !role || !link || link === "🔒") continue;
 
     internships.push({
       company,
       role,
       location,
       link,
+      datePosted,
       source: "GitHub",
     });
   }

@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "scrape:github": "node src/sources/github.js"
+    "scrape:github": "node src/sources/github.js",
+    "bot": "node src/job_bot.js"
   },
   "keywords": [
     "internship",
